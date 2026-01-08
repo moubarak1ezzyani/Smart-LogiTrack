@@ -1,1 +1,29 @@
-/venv
+# --- Python Virtual Environment ---
+# Keeps the massive library folder out of your repo
+venv/
+env/
+
+# --- Python Compiled Files ---
+# These are auto-generated and don't belong in source control
+__pycache__/
+*.pyc
+
+# --- Data Files ---
+# Git is for code, not large datasets. 
+# You should generally not push parquet, csv, or zip files.
+*.parquet
+*.csv
+LogiTechData/dags/data/
+
+# --- Jupyter Notebook Checkpoints ---
+# Auto-save folders created by Jupyter
+.ipynb_checkpoints
+
+# --- Environment Variables / Secrets ---
+# (Safety precaution: never push secrets)
+.env
+
+# --- OS/IDE System Files ---
+.DS_Store
+.vscode/
+.idea/
