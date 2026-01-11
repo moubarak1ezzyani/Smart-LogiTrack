@@ -32,3 +32,4 @@ data/
 docker-compose_I.yml
 Dockerfile_I
 dags/example_dag.py
+LogiTechData/context_pour_ai_studio.txt
