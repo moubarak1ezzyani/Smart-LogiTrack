@@ -13,7 +13,7 @@ __pycache__/
 # You should generally not push parquet, csv, or zip files.
 *.parquet
 *.csv
-LogiTechData/dags/data/
+data/
 
 # --- Jupyter Notebook Checkpoints ---
 # Auto-save folders created by Jupyter
@@ -27,3 +27,8 @@ LogiTechData/dags/data/
 .DS_Store
 .vscode/
 .idea/
+
+# files to push later
+docker-compose_I.yml
+Dockerfile_I
+dags/example_dag.py

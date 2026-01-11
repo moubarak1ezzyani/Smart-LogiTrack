@@ -1,0 +1,13 @@
+apache-airflow
+pyspark
+pandas
+scikit-learn
+fastapi
+uvicorn
+sqlalchemy
+psycopg2-binary
+python-jose[cryptography]
+passlib[bcrypt]
+joblib
+pytest
+python-multipart
