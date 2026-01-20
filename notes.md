@@ -276,3 +276,95 @@ Is this good? It depends on the average length of a taxi trip in NYC.
 * If the average trip is 50 minutes, an error of 6 minutes is excellent (only ~12% error).
 
 * If the average trip is 10 minutes, an error of 6 minutes is not great (it's huge).
+
+***
+## SQL part
+Here is the minimalist guide to unlocking SQL inside your Python notebook.
+
+### The 1-Step Setup
+
+Spark cannot run SQL on a variable like `df_silver`. It needs a **Table Name**.
+You must register your DataFrame as a "temporary view" (think of it as a virtual table in RAM).
+
+```python
+# 1. Give your DataFrame a SQL name
+df_silver.createOrReplaceTempView("trips")
+
+# Now, 'trips' exists as a table in your Spark SQL engine.
+
+```
+
+---
+
+### How to Run Queries (`spark.sql`)
+
+You use `spark.sql(""" ... """)`.
+**Crucial Concept:** The result of a SQL query is **always** a new DataFrame.
+
+#### 1. Basic Selection
+
+Just like standard SQL.
+
+```python
+# Run the query
+df_sql = spark.sql("SELECT * FROM trips LIMIT 5")
+
+# Show the result
+df_sql.show()
+
+```
+
+#### 2. Filtering (The WHERE clause)
+
+If you prefer SQL syntax over Python's `.filter()`:
+
+```python
+query = """
+    SELECT * FROM trips 
+    WHERE duration_minutes > 60 
+      AND total_amount < 100
+"""
+long_trips = spark.sql(query)
+long_trips.show()
+
+```
+
+#### 3. Aggregation (The Power Move)
+
+This is usually much faster to write in SQL than in Python syntax.
+
+```python
+# Let's calculate the average price per payment type
+query = """
+    SELECT 
+        payment_type,
+        COUNT(*) as total_trips,
+        ROUND(AVG(total_amount), 2) as avg_price
+    FROM trips
+    GROUP BY payment_type
+    ORDER BY avg_price DESC
+"""
+spark.sql(query).show()
+
+```
+
+### Pro Tip: Switching Back to Python 🔄
+
+Since `spark.sql` returns a DataFrame, you can immediately switch back to Python syntax. This is the "Hybrid Style" used by seniors.
+
+```python
+# 1. Start with SQL to filter complex stuff
+df_subset = spark.sql("SELECT * FROM trips WHERE passenger_count > 4")
+
+# 2. Continue with Python to save or plot
+df_subset.write.parquet("data/large_groups.parquet")
+
+```
+
+### Summary
+
+1. **Register:** `df.createOrReplaceTempView("my_table")`
+2. **Query:** `df_result = spark.sql("SELECT ...")`
+3. **Result:** It's just another DataFrame!
+
+**Next Step:** Try running that **Aggregation** query (Example 3) above. It will instantly show you which payment type (Card vs Cash) has the higher average fare. Want to see the result?
