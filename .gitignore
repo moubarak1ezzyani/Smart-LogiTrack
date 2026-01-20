@@ -14,7 +14,7 @@ __pycache__/
 *.parquet
 *.csv
 data/
-
+models/
 # --- Jupyter Notebook Checkpoints ---
 # Auto-save folders created by Jupyter
 .ipynb_checkpoints
