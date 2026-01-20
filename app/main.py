@@ -1,103 +1,187 @@
-import os
-import joblib
-import pandas as pd
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy import create_engine, text
-from fastapi.security import OAuth2PasswordRequestForm
-from app.auth import create_access_token, verify_token
+from pyspark.sql import SparkSession
+from pyspark.ml.regression import RandomForestRegressionModel
+from pyspark.ml.feature import VectorAssembler
+import jwt
+import datetime
 
-# app : fastapi 
+# --- CONFIG ---
+DATABASE_URL = "postgresql://airflow:airflow@postgres:5432/airflow"
+SECRET_KEY = "mon_secret_super_securise"
+MODEL_PATH = "/opt/airflow/models/taxi_model"
+
 app = FastAPI(title="Smart LogiTrack API")
+engine = create_engine(DATABASE_URL)
 
-# --- db setup 
-db_url = os.getenv("db_url_env")
-engine = create_engine(db_url)
-model = None
+# --- AUTH JWT ---
+class User(BaseModel):
+    username: str
+    password: str
 
-# --- Startup Event ---
-# ML --> memory : server is ON 
-@app.on_event("startup")
-def load_model():
-    global model
-    try:
-        # Load the pre-trained model from the specific Docker/Server path
-        model = joblib.load('/opt/project/models/model.pkl')
-    except:
-        print("Model not found")
-
-# --- Data Validation Schemas ---
-# Defines the expected data structure for the prediction payload using Pydantic.
-class TripFeatures(BaseModel):
-    trip_distance: float
-    passenger_count: int
-    pickup_hour: int
-    day_of_week: int
-
-# --- Authentication Endpoint ---
-# Handles user login and generates a JWT (JSON Web Token).
-# Currently uses hardcoded credentials (admin/admin) for demonstration.
 @app.post("/token")
-def login(form_data: OAuth2PasswordRequestForm = Depends()):
-    if form_data.username == "admin" and form_data.password == "admin":
-        return {"access_token": create_access_token({"sub": "admin"}), "token_type": "bearer"}
-    raise HTTPException(status_code=400, detail="Incorrect credentials")
+def login(user: User):
+    if user.username == "admin" and user.password == "admin":
+        token = jwt.encode({"sub": user.username, "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=1)}, SECRET_KEY, algorithm="HS256")
+        return {"access_token": token, "token_type": "bearer"}
+    raise HTTPException(status_code=400, detail="Identifiants incorrects")
 
-# --- Prediction Endpoint ---
-# Protected route: Requires a valid JWT token.
-# 1. Accepts trip features.
-# 2. Predicts the ETA using the loaded model.
-# 3. LOGS the prediction to the database (Monitoring/Observability).
-@app.post("/predict", dependencies=[Depends(verify_token)])
-def predict_eta(trip: TripFeatures):
-    # Ensure the model is loaded before attempting prediction
-    if not model:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    # Convert Pydantic model to Pandas DataFrame for the ML model
-    data = pd.DataFrame([trip.dict()])
-    prediction = model.predict(data)[0]
-    
-    # Log the input and the result into PostgreSQL for auditing and drift detection
-    with engine.connect() as conn:
-        # Create table if it doesn't exist (Idempotency)
-        conn.execute(text("""
-            CREATE TABLE IF NOT EXISTS eta_predictions 
-            (timestamp TIMESTAMP DEFAULT NOW(), input TEXT, prediction FLOAT)
-        """))
-        # Insert the log entry
-        conn.execute(text("INSERT INTO eta_predictions (input, prediction) VALUES (:inp, :pred)"), 
-                     {"inp": str(trip.dict()), "pred": prediction})
-    
-    return {"estimated_duration_minutes": round(prediction, 2)}
+def verify_token(token: str = Depends(lambda x: x)):
+    # Simplification pour l'exemple (en prod, utiliser OAuth2PasswordBearer)
+    return True
 
-# --- Analytics Endpoints (SQLAlchemy Raw SQL) ---
-
-# Endpoint 1: Aggregation using a CTE (Common Table Expression).
-# Calculates the average trip duration per hour of the day from the 'silver' layer.
+# --- ANALYTICS (SQL PUR) ---
 @app.get("/analytics/avg-duration-by-hour")
-def avg_duration_by_hour():
-    sql = """
-    WITH HourlyStats AS (
-        SELECT pickup_hour, AVG(duration_minutes) as avg_dur
-        FROM silver_taxi_trips
-        GROUP BY pickup_hour
-    )
-    SELECT pickup_hour, avg_dur FROM HourlyStats ORDER BY pickup_hour;
-    """
+def avg_duration():
+    query = text("""
+        SELECT EXTRACT(HOUR FROM tpep_pickup_datetime) as pickuphour, AVG(duration_minutes) as avgduration
+        FROM silver_taxi_trips GROUP BY pickuphour ORDER BY pickuphour
+    """)
     with engine.connect() as conn:
-        result = conn.execute(text(sql)).fetchall()
-    return [{"pickuphour": row[0], "avgduration": round(row[1], 2)} for row in result]
+        result = conn.execute(query).mappings().all()
+    return result
 
-# Endpoint 2: Grouping analysis.
-# Analyzes trip volume and duration based on the payment method.
 @app.get("/analytics/payment-analysis")
 def payment_analysis():
-    sql = """
-    SELECT payment_type, COUNT(*) as total, AVG(duration_minutes) as avg_dur
-    FROM silver_taxi_trips
-    GROUP BY payment_type
-    """
+    query = text("""
+        SELECT payment_type, COUNT(*) as total_trips, AVG(duration_minutes) as avg_duration
+        FROM silver_taxi_trips GROUP BY payment_type
+    """)
     with engine.connect() as conn:
-        result = conn.execute(text(sql)).fetchall()
-    return [{"payment_type": row[0], "total_trips": row[1], "avg_duration": round(row[2], 2)} for row in result]
+        result = conn.execute(query).mappings().all()
+    return result
+
+# --- PREDICTION ML (PySpark) ---
+# Note: Charger Spark à chaque appel est lent. En prod, on charge au démarrage.
+spark = SparkSession.builder.appName("API_Predict").getOrCreate()
+
+class TripInput(BaseModel):
+    trip_distance: float
+    payment_type: int
+
+@app.post("/predict")
+def predict_eta(trip: TripInput):
+    try:
+        model = RandomForestRegressionModel.load(MODEL_PATH)
+        
+        # Créer DataFrame unitaire
+        df = spark.createDataFrame([(trip.trip_distance, trip.payment_type)], ["trip_distance", "payment_type"])
+        assembler = VectorAssembler(inputCols=["trip_distance", "payment_type"], outputCol="features")
+        df_vec = assembler.transform(df)
+        
+        prediction = model.transform(df_vec).collect()[0]["prediction"]
+        
+        # Log prediction (Bonus Tache 5)
+        with engine.connect() as conn:
+            conn.execute(text("CREATE TABLE IF NOT EXISTS eta_predictions (timestamp TIMESTAMP, prediction FLOAT)"))
+            conn.execute(text(f"INSERT INTO eta_predictions VALUES (NOW(), {prediction})"))
+            conn.commit()
+
+        return {"estimated_duration_minutes": prediction}
+    except Exception as e:
+        return {"error": str(e), "message": "Le modèle n'est peut-être pas encore entraîné."}
+#=========================================================
+# import os
+# import joblib
+# import pandas as pd
+# from fastapi import FastAPI, Depends, HTTPException
+# from pydantic import BaseModel
+# from sqlalchemy import create_engine, text
+# from fastapi.security import OAuth2PasswordRequestForm
+# from app.auth import create_access_token, verify_token
+
+# # app : fastapi 
+# app = FastAPI(title="Smart LogiTrack API")
+
+# # --- db setup 
+# db_url = os.getenv("db_url_env")
+# engine = create_engine(db_url)
+# model = None
+
+# # --- Startup Event ---
+# # ML --> memory : server is ON 
+# @app.on_event("startup")
+# def load_model():
+#     global model
+#     try:
+#         # Load the pre-trained model from the specific Docker/Server path
+#         model = joblib.load('/opt/project/models/model.pkl')
+#     except:
+#         print("Model not found")
+
+# # --- Data Validation Schemas ---
+# # Defines the expected data structure for the prediction payload using Pydantic.
+# class TripFeatures(BaseModel):
+#     trip_distance: float
+#     passenger_count: int
+#     pickup_hour: int
+#     day_of_week: int
+
+# # --- Authentication Endpoint ---
+# # Handles user login and generates a JWT (JSON Web Token).
+# # Currently uses hardcoded credentials (admin/admin) for demonstration.
+# @app.post("/token")
+# def login(form_data: OAuth2PasswordRequestForm = Depends()):
+#     if form_data.username == "admin" and form_data.password == "admin":
+#         return {"access_token": create_access_token({"sub": "admin"}), "token_type": "bearer"}
+#     raise HTTPException(status_code=400, detail="Incorrect credentials")
+
+# # --- Prediction Endpoint ---
+# # Protected route: Requires a valid JWT token.
+# # 1. Accepts trip features.
+# # 2. Predicts the ETA using the loaded model.
+# # 3. LOGS the prediction to the database (Monitoring/Observability).
+# @app.post("/predict", dependencies=[Depends(verify_token)])
+# def predict_eta(trip: TripFeatures):
+#     # Ensure the model is loaded before attempting prediction
+#     if not model:
+#         raise HTTPException(status_code=503, detail="Model not loaded")
+    
+#     # Convert Pydantic model to Pandas DataFrame for the ML model
+#     data = pd.DataFrame([trip.dict()])
+#     prediction = model.predict(data)[0]
+    
+#     # Log the input and the result into PostgreSQL for auditing and drift detection
+#     with engine.connect() as conn:
+#         # Create table if it doesn't exist (Idempotency)
+#         conn.execute(text("""
+#             CREATE TABLE IF NOT EXISTS eta_predictions 
+#             (timestamp TIMESTAMP DEFAULT NOW(), input TEXT, prediction FLOAT)
+#         """))
+#         # Insert the log entry
+#         conn.execute(text("INSERT INTO eta_predictions (input, prediction) VALUES (:inp, :pred)"), 
+#                      {"inp": str(trip.dict()), "pred": prediction})
+    
+#     return {"estimated_duration_minutes": round(prediction, 2)}
+
+# # --- Analytics Endpoints (SQLAlchemy Raw SQL) ---
+
+# # Endpoint 1: Aggregation using a CTE (Common Table Expression).
+# # Calculates the average trip duration per hour of the day from the 'silver' layer.
+# @app.get("/analytics/avg-duration-by-hour")
+# def avg_duration_by_hour():
+#     sql = """
+#     WITH HourlyStats AS (
+#         SELECT pickup_hour, AVG(duration_minutes) as avg_dur
+#         FROM silver_taxi_trips
+#         GROUP BY pickup_hour
+#     )
+#     SELECT pickup_hour, avg_dur FROM HourlyStats ORDER BY pickup_hour;
+#     """
+#     with engine.connect() as conn:
+#         result = conn.execute(text(sql)).fetchall()
+#     return [{"pickuphour": row[0], "avgduration": round(row[1], 2)} for row in result]
+
+# # Endpoint 2: Grouping analysis.
+# # Analyzes trip volume and duration based on the payment method.
+# @app.get("/analytics/payment-analysis")
+# def payment_analysis():
+#     sql = """
+#     SELECT payment_type, COUNT(*) as total, AVG(duration_minutes) as avg_dur
+#     FROM silver_taxi_trips
+#     GROUP BY payment_type
+#     """
+#     with engine.connect() as conn:
+#         result = conn.execute(text(sql)).fetchall()
+#     return [{"payment_type": row[0], "total_trips": row[1], "avg_duration": round(row[2], 2)} for row in result]
