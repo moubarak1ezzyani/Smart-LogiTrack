@@ -32,6 +32,6 @@ models/
 docker-compose_I.yml
 Dockerfile_I
 dags/example_dag.py
-notebook/context_pour_ai_studio.txt
+# notebook/context_pour_ai_studio.txt
 
 
