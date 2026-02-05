@@ -1,0 +1,85 @@
+--- RAPPORT CONTEXTUEL DE DONNÉES : data/bronze_taxi.parquet ---
+Ce rapport décrit la structure et la distribution des données pour un projet Data Engineering.
+
+## 1. VOLUMÉTRIE
+- Nombre de lignes : 3475226
+- Nombre de colonnes : 20
+- Usage Mémoire (approx) : 638.70 MB
+
+## 2. DÉTAILS DES VARIABLES ET DISTRIBUTIONS
+
+### Variable: 'VendorID' (Type: int32)
+- Stats : Min=1.0, Max=7.0, Moyenne=1.79
+
+### Variable: 'tpep_pickup_datetime' (Type: datetime64[us])
+- Période temporelle : De 2024-12-31 20:47:55 à 2025-02-01 00:00:44
+
+### Variable: 'tpep_dropoff_datetime' (Type: datetime64[us])
+- Période temporelle : De 2024-12-18 07:52:40 à 2025-02-01 23:44:11
+
+### Variable: 'passenger_count' (Type: float64)
+- Valeurs manquantes : 540149 (15.54%)
+- Stats : Min=0.0, Max=9.0, Moyenne=1.30
+
+### Variable: 'trip_distance' (Type: float64)
+- Stats : Min=0.0, Max=276423.57, Moyenne=5.86
+
+### Variable: 'RatecodeID' (Type: float64)
+- Valeurs manquantes : 540149 (15.54%)
+- Stats : Min=1.0, Max=99.0, Moyenne=2.48
+
+### Variable: 'store_and_fwd_flag' (Type: object)
+- Valeurs manquantes : 540149 (15.54%)
+- Cardinalité : 2 valeurs uniques
+- Top valeurs fréquentes : {'N': 2927431, 'Y': 7646}
+
+### Variable: 'PULocationID' (Type: int32)
+- Stats : Min=1.0, Max=265.0, Moyenne=165.19
+
+### Variable: 'DOLocationID' (Type: int32)
+- Stats : Min=1.0, Max=265.0, Moyenne=164.13
+
+### Variable: 'payment_type' (Type: int64)
+- Stats : Min=0.0, Max=5.0, Moyenne=1.04
+
+### Variable: 'fare_amount' (Type: float64)
+- Stats : Min=-900.0, Max=863372.12, Moyenne=17.08
+- NOTE : Contient 144118 valeurs négatives (potentiels retours/erreurs).
+
+### Variable: 'extra' (Type: float64)
+- Stats : Min=-7.5, Max=15.0, Moyenne=1.32
+
+### Variable: 'mta_tax' (Type: float64)
+- Stats : Min=-0.5, Max=10.5, Moyenne=0.48
+
+### Variable: 'tip_amount' (Type: float64)
+- Stats : Min=-86.0, Max=400.0, Moyenne=2.96
+- NOTE : Contient 124 valeurs négatives (potentiels retours/erreurs).
+
+### Variable: 'tolls_amount' (Type: float64)
+- Stats : Min=-126.94, Max=170.94, Moyenne=0.45
+- NOTE : Contient 4559 valeurs négatives (potentiels retours/erreurs).
+
+### Variable: 'improvement_surcharge' (Type: float64)
+- Stats : Min=-1.0, Max=1.0, Moyenne=0.95
+
+### Variable: 'total_amount' (Type: float64)
+- Stats : Min=-901.0, Max=863380.37, Moyenne=25.61
+- NOTE : Contient 63037 valeurs négatives (potentiels retours/erreurs).
+
+### Variable: 'congestion_surcharge' (Type: float64)
+- Valeurs manquantes : 540149 (15.54%)
+- Stats : Min=-2.5, Max=2.5, Moyenne=2.23
+
+### Variable: 'Airport_fee' (Type: float64)
+- Valeurs manquantes : 540149 (15.54%)
+- Stats : Min=-1.75, Max=6.75, Moyenne=0.12
+
+### Variable: 'cbd_congestion_fee' (Type: float64)
+- Stats : Min=-0.75, Max=0.75, Moyenne=0.48
+
+## 3. ÉCHANTILLON BRUT (JSON)
+Voici 3 lignes représentatives pour comprendre le format exact :
+{"VendorID":1,"tpep_pickup_datetime":"2025-01-01T00:18:38.000","tpep_dropoff_datetime":"2025-01-01T00:26:59.000","passenger_count":1.0,"trip_distance":1.6,"RatecodeID":1.0,"store_and_fwd_flag":"N","PULocationID":229,"DOLocationID":237,"payment_type":1,"fare_amount":10.0,"extra":3.5,"mta_tax":0.5,"tip_amount":3.0,"tolls_amount":0.0,"improvement_surcharge":1.0,"total_amount":18.0,"congestion_surcharge":2.5,"Airport_fee":0.0,"cbd_congestion_fee":0.0}
+{"VendorID":1,"tpep_pickup_datetime":"2025-01-01T00:32:40.000","tpep_dropoff_datetime":"2025-01-01T00:35:13.000","passenger_count":1.0,"trip_distance":0.5,"RatecodeID":1.0,"store_and_fwd_flag":"N","PULocationID":236,"DOLocationID":237,"payment_type":1,"fare_amount":5.1,"extra":3.5,"mta_tax":0.5,"tip_amount":2.02,"tolls_amount":0.0,"improvement_surcharge":1.0,"total_amount":12.12,"congestion_surcharge":2.5,"Airport_fee":0.0,"cbd_congestion_fee":0.0}
+{"VendorID":1,"tpep_pickup_datetime":"2025-01-01T00:44:04.000","tpep_dropoff_datetime":"2025-01-01T00:46:01.000","passenger_count":1.0,"trip_distance":0.6,"RatecodeID":1.0,"store_and_fwd_flag":"N","PULocationID":141,"DOLocationID":141,"payment_type":1,"fare_amount":5.1,"extra":3.5,"mta_tax":0.5,"tip_amount":2.0,"tolls_amount":0.0,"improvement_surcharge":1.0,"total_amount":12.1,"congestion_surcharge":2.5,"Airport_fee":0.0,"cbd_congestion_fee":0.0}
